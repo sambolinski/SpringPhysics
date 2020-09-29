@@ -77,7 +77,7 @@ struct Spring {
 };
 
 struct Rope {
-    std::vector<Node> nodes;
+    std::vector<Node*> nodes;
     std::vector<Spring> springs;
    //uint16_t NUM_NODES = 50;
     uint16_t NUM_NODES = 50; 
@@ -89,13 +89,13 @@ struct Rope {
         nodes.reserve(MAX_NODES);
         springs.reserve(MAX_NODES);
         for (uint16_t i = 0; i < NUM_NODES; i++) {
-            nodes.push_back(Node(startPos+(endPos-startPos)*((double)i/(double)NUM_NODES)));
+            nodes.push_back(new Node(startPos+(endPos-startPos)*((double)i/(double)NUM_NODES)));
         }
         for (uint16_t i = 0; i < nodes.size()-1; i++) {
-            springs.push_back(Spring(nodes.at(i), nodes.at(i+1)));
+            springs.push_back(Spring(*nodes.at(i), *nodes.at(i+1)));
         }
-        nodes.at(0).Lock();
-        nodes.at(nodes.size()-1).Lock();
+        nodes.at(0)->Lock();
+        nodes.at(nodes.size()-1)->Lock();
     }
 
     void Increase() {
@@ -103,27 +103,29 @@ struct Rope {
             unsigned int secondIndex = nodes.size()-3;
             if (nodes.size() < 3)
                 secondIndex = 1;            
-            nodes.push_back(Node(nodes.at(nodes.size() - 1).pos + (nodes.at(nodes.size() - 1).pos - nodes.at(secondIndex).pos).norm()*springs.at(0).equilibriumDistance));
-            springs.push_back(Spring(nodes.at(nodes.size()-2), nodes.at(nodes.size()-1)));
+            nodes.push_back(new Node(nodes.at(nodes.size() - 1)->pos + (nodes.at(nodes.size() - 1)->pos - nodes.at(secondIndex)->pos).norm()*springs.at(0).equilibriumDistance));
+            springs.push_back(Spring(*nodes.at(nodes.size()-2), *nodes.at(nodes.size()-1)));
         }
 
     }
 
     void Decrease() {
         if (nodes.size() > MIN_NODES) {
+            Node* toDelete = nodes.at(nodes.size()-1);
             nodes.pop_back();
             springs.pop_back();
+            delete toDelete;
         }
     }
 
     void Delete() {
+        //DEAL WITH POINTERS
         uint16_t deletionIndex;
         for (uint16_t i = 0; i < nodes.size(); i++) {
-            if (&nodes.at(i) == editingNode) {
+            if (nodes.at(i) == editingNode) {
                 deletionIndex = i;
             }
         }
-        //nodes.erase(nodes.begin()+ deletionIndex, nodes.begin() + deletionIndex +1);
         nodes.erase(nodes.begin() + deletionIndex);
         for (std::vector<Spring>::iterator it = springs.begin(); it != springs.end();) {
             if (it->firstObject == editingNode || it->secondObject == editingNode) {
@@ -132,14 +134,16 @@ struct Rope {
                 it++;
             }
         }
+        delete editingNode;
         editingNode = NULL;
     }
 
-    void Insert(olc::vd2d pos) {
-        nodes.push_back(Node(pos));
-        springs.push_back(Spring(*editingNode, nodes.at(nodes.size()-1)));
-        editingNode = &nodes.at(nodes.size() - 1);
+    void Insert(olc::vd2d pos, Node *connecting = NULL) {
+        nodes.push_back(new Node(pos));
+        springs.push_back(Spring(*editingNode, connecting == NULL ? *nodes.at(nodes.size() - 1):*connecting));
+        editingNode = nodes.at(nodes.size() - 1);
     }
+
 };
 // Override base class with your custom functionality
 class RopePhysics : public olc::PixelGameEngine {
@@ -175,7 +179,7 @@ public:
     bool OnUserCreate() override {
         // Called once at the start, so create things here
         rope = Rope(olc::vd2d(0, -50), olc::vd2d(100, -50)); 
-        closest = &rope.nodes.at(0);
+        closest = rope.nodes.at(0);
         return true;
     }
     bool OnUserUpdate(float fElapsedTime) override {
@@ -185,8 +189,8 @@ public:
         double distance = 31;
         if (!holding) {
             for (uint16_t i = 0; i < rope.nodes.size(); i++) {
-                if ((olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(rope.nodes.at(i).pos)).mag() < (olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(closest->pos)).mag()) {
-                    closest = &rope.nodes.at(i);
+                if ((olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(rope.nodes.at(i)->pos)).mag() < (olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(closest->pos)).mag()) {
+                    closest = rope.nodes.at(i);
                 }
             }
         }
@@ -219,7 +223,11 @@ public:
             }
             if (GetMouse(1).bPressed && editing) {
                 if (rope.editingNode != NULL) {
-                    rope.Insert(ScreenToWorld((olc::vd2d(GetMouseX(), GetMouseY()) - camera) / scale));
+                    if ((olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(closest->pos)).mag() < 10 && closest != rope.editingNode) {
+                        rope.Insert(ScreenToWorld((olc::vd2d(GetMouseX(), GetMouseY()) - camera) / scale), closest);
+                    } else {
+                        rope.Insert(ScreenToWorld((olc::vd2d(GetMouseX(), GetMouseY()) - camera) / scale), NULL);
+                    }
                 }
             }
 
@@ -251,26 +259,14 @@ public:
         //Drawing Rope
         for (uint16_t i = 0; i < rope.springs.size(); i++) {
             DrawLine(calibrate(rope.springs.at(i).firstObject->pos), calibrate(rope.springs.at(i).secondObject->pos));
-            if (drawNodes) {
-                FillCircle(calibrate(rope.springs.at(i).firstObject->pos), 2, olc::WHITE);
-            }
-            if(rope.springs.at(i).firstObject->locked)
-                FillCircle(calibrate(rope.springs.at(i).firstObject->pos), 3, olc::RED);
-
-            if (editing && rope.springs.at(i).firstObject == rope.editingNode)
-                FillCircle(calibrate(rope.springs.at(i).firstObject->pos), 2, olc::GREEN);
-
-            if (i == rope.springs.size() - 1) {
-                if (drawNodes)
-                    FillCircle(calibrate(rope.springs.at(i).secondObject->pos), 2);
-                if (rope.springs.at(i).secondObject->locked) {
-                    FillCircle(calibrate(rope.springs.at(i).secondObject->pos), 3, olc::RED);
-                }
-
-                if (editing &&rope.springs.at(i).secondObject == rope.editingNode)
-                    FillCircle(calibrate(rope.springs.at(i).secondObject->pos), 2, olc::GREEN);
-            }
-
+        }
+        for (uint16_t i = 0; i < rope.nodes.size(); i++) {
+            if (drawNodes)
+                FillCircle(calibrate(rope.nodes.at(i)->pos), 2, olc::WHITE);
+            if (rope.nodes.at(i)->locked)
+                FillCircle(calibrate(rope.nodes.at(i)->pos), 3, olc::RED);
+            if (editing && rope.nodes.at(i) == rope.editingNode)
+                FillCircle(calibrate(rope.nodes.at(i)->pos), 2, olc::GREEN);
         }
 
         //HUD
@@ -293,33 +289,33 @@ public:
 
     void CollideWorldEdge() {
         for (uint16_t i = 0; i < rope.nodes.size(); i++) {
-            if (calibrate(rope.nodes.at(i).pos).x >= ScreenWidth()) {
-                rope.nodes.at(i).vel = rope.nodes.at(i).vel - rope.nodes.at(i).vel.dot(olc::vd2d(-1, 0))*olc::vd2d(-1, 0);
+            if (calibrate(rope.nodes.at(i)->pos).x >= ScreenWidth()) {
+                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d(-1, 0))*olc::vd2d(-1, 0);
             }
-            if (calibrate(rope.nodes.at(i).pos).x <= 0) {
-                rope.nodes.at(i).vel = rope.nodes.at(i).vel - rope.nodes.at(i).vel.dot(olc::vd2d( 1, 0))*olc::vd2d(-1, 0);
+            if (calibrate(rope.nodes.at(i)->pos).x <= 0) {
+                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d( 1, 0))*olc::vd2d(-1, 0);
             }
-            if (calibrate(rope.nodes.at(i).pos).y <= 0) {
-                rope.nodes.at(i).vel = rope.nodes.at(i).vel - rope.nodes.at(i).vel.dot(olc::vd2d(0, 1))*olc::vd2d(-1, 0);
+            if (calibrate(rope.nodes.at(i)->pos).y <= 0) {
+                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d(0, 1))*olc::vd2d(-1, 0);
 
             }
-            if (calibrate(rope.nodes.at(i).pos).y >= ScreenHeight()) {
-                rope.nodes.at(i).vel = rope.nodes.at(i).vel - rope.nodes.at(i).vel.dot(olc::vd2d(0,-1))*olc::vd2d(-1, 0);
+            if (calibrate(rope.nodes.at(i)->pos).y >= ScreenHeight()) {
+                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d(0,-1))*olc::vd2d(-1, 0);
 
             }
         }
     }
     void Update(float fElapsedTime) {
         for (uint16_t i = 0; i < rope.nodes.size(); i++) {
-            if (!rope.nodes.at(i).locked) {
+            if (!rope.nodes.at(i)->locked) {
                 //Gravity
-                rope.nodes.at(i).ApplyForce(gravitationalAcceleration*rope.nodes.at(i).mass);
+                rope.nodes.at(i)->ApplyForce(gravitationalAcceleration*rope.nodes.at(i)->mass);
                 //Air resistance
                 if(airResistance)
-                rope.nodes.at(i).ApplyForce(rope.nodes.at(i).vel *-0.1f*rope.nodes.at(i).mass);
+                rope.nodes.at(i)->ApplyForce(rope.nodes.at(i)->vel *-0.1f*rope.nodes.at(i)->mass);
             }
-            rope.nodes.at(i).Update(fElapsedTime);
-            rope.nodes.at(i).ResetForce();
+            rope.nodes.at(i)->Update(fElapsedTime);
+            rope.nodes.at(i)->ResetForce();
         }        
 
         //Updating springs multiple times for stability
