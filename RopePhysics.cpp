@@ -139,7 +139,8 @@ struct Rope {
     }
 
     void Insert(olc::vd2d pos, Node *connecting = NULL) {
-        nodes.push_back(new Node(pos));
+        if(connecting == NULL)
+            nodes.push_back(new Node(pos));
         springs.push_back(Spring(*editingNode, connecting == NULL ? *nodes.at(nodes.size() - 1):*connecting));
         editingNode = nodes.at(nodes.size() - 1);
     }
@@ -223,7 +224,7 @@ public:
             }
             if (GetMouse(1).bPressed && editing) {
                 if (rope.editingNode != NULL) {
-                    if ((olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(closest->pos)).mag() < 10 && closest != rope.editingNode) {
+                    if ((olc::vd2d(GetMouseX(), GetMouseY()) - calibrate(closest->pos)).mag() < 20 && closest != rope.editingNode) {
                         rope.Insert(ScreenToWorld((olc::vd2d(GetMouseX(), GetMouseY()) - camera) / scale), closest);
                     } else {
                         rope.Insert(ScreenToWorld((olc::vd2d(GetMouseX(), GetMouseY()) - camera) / scale), NULL);
@@ -247,6 +248,7 @@ public:
                 if (editing) paused = true;
             }
             if (GetKey(olc::Key::DEL).bPressed) {
+                if(editing)
                 rope.Delete();
             }
             if (GetMouseWheel() > 0) rope.Increase();
@@ -287,22 +289,26 @@ public:
         return olc::vd2d(c.x - ScreenWidth() / 2, c.y - ScreenHeight() / 2);
     }
 
-    void CollideWorldEdge() {
-        for (uint16_t i = 0; i < rope.nodes.size(); i++) {
-            if (calibrate(rope.nodes.at(i)->pos).x >= ScreenWidth()) {
-                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d(-1, 0))*olc::vd2d(-1, 0);
-            }
-            if (calibrate(rope.nodes.at(i)->pos).x <= 0) {
-                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d( 1, 0))*olc::vd2d(-1, 0);
-            }
-            if (calibrate(rope.nodes.at(i)->pos).y <= 0) {
-                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d(0, 1))*olc::vd2d(-1, 0);
-
-            }
-            if (calibrate(rope.nodes.at(i)->pos).y >= ScreenHeight()) {
-                rope.nodes.at(i)->vel = rope.nodes.at(i)->vel - rope.nodes.at(i)->vel.dot(olc::vd2d(0,-1))*olc::vd2d(-1, 0);
-
-            }
+    void CollideWorldEdge(Node *node) {
+        if (calibrate(node->pos).x >= ScreenWidth()) {
+            node->pos.x = ScreenToWorld((olc::vd2d(ScreenWidth()-1, calibrate(node->pos).y) - camera) / scale).x;
+            node->lastPos.x = ScreenToWorld((olc::vd2d(ScreenWidth() - 1, calibrate(node->pos).y) - camera) / scale).x;
+            //node->force = node->force - olc::vd2d(-1, 0)*2*(node->force.dot(olc::vd2d(-1, 0)));
+        }
+        if (calibrate(node->pos).x <= 0) {
+            node->pos.x = ScreenToWorld((olc::vd2d(1, calibrate(node->pos).y) - camera) / scale).x;
+            node->lastPos.x = ScreenToWorld((olc::vd2d(1, calibrate(node->pos).y) - camera) / scale).x;
+            //node->force = node->force - olc::vd2d(1, 0) * 2 * (node->force.dot(olc::vd2d(1, 0)));
+        }
+        if (calibrate(node->pos).y <= 0) {
+            node->pos.y = ScreenToWorld((olc::vd2d(calibrate(node->pos).x, 1) - camera) / scale).y;
+            node->lastPos.y = ScreenToWorld((olc::vd2d(calibrate(node->pos).x, 1) - camera) / scale).y;
+            //node->force = node->force - olc::vd2d(0, 1) * 2 * (node->force.dot(olc::vd2d(0, 1)));
+        }
+        if (calibrate(node->pos).y >= ScreenHeight()) {
+            node->pos.y = ScreenToWorld((olc::vd2d(calibrate(node->pos).x, ScreenHeight()-1) - camera) / scale).y;
+            node->lastPos.y = ScreenToWorld((olc::vd2d(calibrate(node->pos).x, ScreenHeight() - 1) - camera) / scale).y;
+            //node->force = node->force - olc::vd2d(0, -1) * 2 * (node->force.dot(olc::vd2d(0, -1)));
         }
     }
     void Update(float fElapsedTime) {
@@ -314,6 +320,7 @@ public:
                 if(airResistance)
                 rope.nodes.at(i)->ApplyForce(rope.nodes.at(i)->vel *-0.1f*rope.nodes.at(i)->mass);
             }
+            CollideWorldEdge(rope.nodes.at(i));
             rope.nodes.at(i)->Update(fElapsedTime);
             rope.nodes.at(i)->ResetForce();
         }        
