@@ -1,6 +1,6 @@
 # Spring Physics Simulation
 ![img](https://i.imgur.com/PtxvkZT.png)
-This project is a 2D pixel simulation of spring connections between nodes. The original goal was to simulate rope, which was achieved vy connecting many nodes closely together. Properties such as tension and stretching can be shown, furthermore, if a few nodes are connected it also simulates soft-body physics.
+This project is a 2D pixel simulation of spring connections between nodes. The original goal was to simulate rope, which was achieved by connecting many nodes closely together. Properties such as tension and stretching can be shown, furthermore, if a few nodes are connected it also simulates soft-body physics.
 
 # Features
 - Physics
